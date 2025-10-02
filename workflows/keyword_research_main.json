@@ -1,0 +1,291 @@
+{
+  "name": "SEO Keyword Research Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "keyword-research",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "seo-keyword-research"
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "seed_keyword",
+              "value": "={{ $json.seed_keyword || $json.keyword }}"
+            },
+            {
+              "name": "max_keywords",
+              "value": "={{ $json.max_keywords || 50 }}"
+            },
+            {
+              "name": "timestamp",
+              "value": "={{ $now }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Set Variables",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "groqApi",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "llama-3.1-70b-versatile"
+            },
+            {
+              "name": "messages",
+              "value": "={{ [{\"role\": \"user\", \"content\": \"Generate 30 SEO keyword variations for: \" + $node['Set Variables'].json['seed_keyword'] + \". Return only a JSON array of strings.\"}] }}"
+            },
+            {
+              "name": "temperature",
+              "value": 0.7
+            },
+            {
+              "name": "max_tokens",
+              "value": 2000
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Groq - Generate Keywords",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Parse LLM response and extract keywords\nconst response = $input.first().json;\nconst content = response.choices[0].message.content;\n\nlet keywords = [];\n\ntry {\n  // Try to parse as JSON\n  let parsed = content;\n  if (content.includes('```')) {\n    // Remove markdown code blocks\n    parsed = content.split('```')[1];\n    if (parsed.startsWith('json')) {\n      parsed = parsed.substring(4);\n    }\n  }\n  \n  keywords = JSON.parse(parsed);\n  \n} catch (e) {\n  // Fallback: extract from text\n  const lines = content.split('\\n');\n  keywords = lines\n    .map(line => line.trim())\n    .filter(line => line && line.length > 3)\n    .map(line => line.replace(/^[-*•\\d.]+\\s*/, '').replace(/[\"']/g, ''))\n    .filter(line => line.length > 0);\n}\n\n// Clean and deduplicate\nconst uniqueKeywords = [...new Set(keywords.map(k => k.toLowerCase().trim()))];\n\nreturn uniqueKeywords.slice(0, 30).map(keyword => ({\n  json: { keyword, source: 'llm' }\n}));"
+      },
+      "name": "Parse LLM Keywords",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://serpapi.com/search?q={{ encodeURIComponent($node['Set Variables'].json['seed_keyword']) }}&api_key={{ $credentials.serpApi.apiKey }}&engine=google&gl=us&hl=en",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "serpApi",
+        "options": {}
+      },
+      "name": "SERP - Get Related Searches",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [850, 500]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Extract related searches and PAA from SERP\nconst serp = $input.first().json;\nconst keywords = [];\n\n// Related searches\nif (serp.related_searches) {\n  serp.related_searches.forEach(item => {\n    if (item.query) {\n      keywords.push(item.query.toLowerCase());\n    }\n  });\n}\n\n// People also ask\nif (serp.related_questions) {\n  serp.related_questions.forEach(item => {\n    if (item.question) {\n      const question = item.question.toLowerCase().replace(/\\?$/, '');\n      keywords.push(question);\n    }\n  });\n}\n\nreturn keywords.map(keyword => ({\n  json: { keyword, source: 'serp' }\n}));"
+      },
+      "name": "Parse SERP Keywords",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1050, 500]
+    },
+    {
+      "parameters": {
+        "mode": "mergeByIndex"
+      },
+      "name": "Merge Keywords",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [1250, 400]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Merge and deduplicate all keywords\nconst allItems = $input.all();\nconst keywordsSet = new Set();\nconst seedKeyword = $node['Set Variables'].json['seed_keyword'].toLowerCase();\n\n// Add seed keyword\nkeywordsSet.add(seedKeyword);\n\n// Add all keywords from sources\nallItems.forEach(item => {\n  if (item.json.keyword) {\n    const kw = item.json.keyword.toLowerCase().trim();\n    if (kw.length > 3) {\n      keywordsSet.add(kw);\n    }\n  }\n});\n\n// Convert to array\nconst uniqueKeywords = Array.from(keywordsSet);\n\nreturn uniqueKeywords.map(keyword => ({\n  json: { keyword }\n}));"
+      },
+      "name": "Deduplicate",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1450, 400]
+    },
+    {
+      "parameters": {
+        "batchSize": 5,
+        "options": {}
+      },
+      "name": "Split In Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 1,
+      "position": [1650, 400]
+    },
+    {
+      "parameters": {
+        "url": "=https://serpapi.com/search?q={{ encodeURIComponent($json.keyword) }}&api_key={{ $credentials.serpApi.apiKey }}&engine=google&gl=us&hl=en&num=10",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "serpApi",
+        "options": {}
+      },
+      "name": "SERP - Analyze Keyword",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1850, 400]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Analyze competition from SERP results\nconst keyword = $input.first().json.keyword || $json.keyword;\nconst serpResults = $json;\n\nconst highAuthorityDomains = [\n  'wikipedia.org', 'amazon.com', 'linkedin.com',\n  'indeed.com', 'glassdoor.com', 'forbes.com',\n  'nytimes.com', 'medium.com', 'reddit.com',\n  'youtube.com', 'stackoverflow.com'\n];\n\nlet bigBrandsCount = 0;\nconst domains = [];\n\n// Analyze organic results\nconst organicResults = serpResults.organic_results || [];\norganicResults.slice(0, 10).forEach(result => {\n  const domain = (result.domain || result.displayed_link || '').toLowerCase();\n  domains.push(domain);\n  \n  if (highAuthorityDomains.some(auth => domain.includes(auth))) {\n    bigBrandsCount++;\n  }\n});\n\n// Check SERP features\nconst hasFeaturedSnippet = !!(serpResults.featured_snippet || serpResults.answer_box);\nconst hasKnowledgeGraph = !!serpResults.knowledge_graph;\nconst hasAds = !!(serpResults.ads || serpResults.top_ads);\n\nlet serpFeaturesCount = 0;\nif (hasFeaturedSnippet) serpFeaturesCount++;\nif (hasKnowledgeGraph) serpFeaturesCount++;\nif (hasAds) serpFeaturesCount++;\n\n// Calculate competition score (0-100)\nlet competitionScore = 0;\ncompetitionScore += Math.min(bigBrandsCount * 10, 50);\nif (hasFeaturedSnippet) competitionScore += 10;\nif (hasKnowledgeGraph) competitionScore += 10;\nif (hasAds) competitionScore += 10;\n\nconst totalResults = serpResults.search_information?.total_results || 0;\nif (totalResults > 100000000) competitionScore += 20;\nelse if (totalResults > 10000000) competitionScore += 15;\nelse if (totalResults > 1000000) competitionScore += 10;\n\ncompetitionScore = Math.min(competitionScore, 100);\n\n// Estimate first page probability\nlet firstPageProb = 0.5;\nif (competitionScore < 20) firstPageProb = 0.85;\nelse if (competitionScore < 40) firstPageProb = 0.65;\nelse if (competitionScore < 60) firstPageProb = 0.45;\nelse if (competitionScore < 80) firstPageProb = 0.25;\nelse firstPageProb = 0.10;\n\nfirstPageProb -= Math.min(bigBrandsCount * 0.08, 0.30);\nfirstPageProb -= Math.min(serpFeaturesCount * 0.05, 0.20);\nfirstPageProb = Math.max(firstPageProb, 0.05);\n\nreturn [{\n  json: {\n    keyword,\n    competition_score: competitionScore,\n    big_brands_count: bigBrandsCount,\n    has_featured_snippet: hasFeaturedSnippet,\n    has_knowledge_graph: hasKnowledgeGraph,\n    has_ads: hasAds,\n    serp_features_count: serpFeaturesCount,\n    first_page_probability: Math.round(firstPageProb * 100) / 100,\n    total_results: totalResults,\n    top_domains: domains.slice(0, 5)\n  }\n}];"
+      },
+      "name": "Calculate Competition",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2050, 400]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Estimate search volume based on keyword characteristics\nconst keyword = $json.keyword;\nconst wordCount = keyword.split(' ').length;\n\n// Simple heuristic for volume estimation\nlet estimatedVolume = 1000;\n\nif (wordCount <= 2) {\n  estimatedVolume = 5000; // Short-tail\n} else if (wordCount === 3) {\n  estimatedVolume = 2000; // Medium-tail\n} else if (wordCount === 4) {\n  estimatedVolume = 1000; // Long-tail\n} else {\n  estimatedVolume = 500; // Very long-tail\n}\n\n// Add some randomness for variety\nestimatedVolume = estimatedVolume + Math.floor(Math.random() * 500);\n\nreturn [{\n  json: {\n    ...$json,\n    estimated_volume: estimatedVolume,\n    relevance_score: 0.75 // Default relevance\n  }\n}];"
+      },
+      "name": "Estimate Volume",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2250, 400]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Calculate opportunity score\nconst data = $json;\n\nconst volume = data.estimated_volume || 1000;\nconst competition = data.competition_score || 50;\nconst relevance = data.relevance_score || 0.5;\n\n// Weights\nconst volumeWeight = 0.4;\nconst competitionWeight = 0.4;\nconst relevanceWeight = 0.2;\n\n// Normalize volume (diminishing returns)\nconst volumeNormalized = Math.min(Math.sqrt(volume) / 10, 100);\n\n// Inverse competition\nconst competitionScore = 100 - competition;\n\n// Relevance to 0-100\nconst relevanceScore = relevance * 100;\n\n// Calculate opportunity\nconst opportunityScore = \n  (volumeNormalized * volumeWeight) +\n  (competitionScore * competitionWeight) +\n  (relevanceScore * relevanceWeight);\n\nreturn [{\n  json: {\n    ...$json,\n    opportunity_score: Math.round(opportunityScore * 100) / 100\n  }\n}];"
+      },
+      "name": "Calculate Opportunity Score",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2450, 400]
+    },
+    {
+      "parameters": {},
+      "name": "Loop Back",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 1,
+      "position": [2650, 400]
+    },
+    {
+      "parameters": {
+        "sortFieldsUi": {
+          "sortField": [
+            {
+              "fieldName": "opportunity_score",
+              "order": "descending"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Sort by Opportunity",
+      "type": "n8n-nodes-base.sort",
+      "typeVersion": 1,
+      "position": [2850, 400]
+    },
+    {
+      "parameters": {
+        "maxItems": "={{ $node['Set Variables'].json['max_keywords'] }}",
+        "options": {}
+      },
+      "name": "Limit to Top 50",
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [3050, 400]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Format final output\nconst allKeywords = $input.all();\nconst seedKeyword = $node['Set Variables'].json['seed_keyword'];\nconst maxKeywords = $node['Set Variables'].json['max_keywords'];\n\nconst topKeywords = allKeywords.map((item, index) => ({\n  rank: index + 1,\n  keyword: item.json.keyword,\n  opportunity_score: item.json.opportunity_score,\n  estimated_volume: item.json.estimated_volume,\n  competition_score: item.json.competition_score,\n  relevance_score: item.json.relevance_score,\n  first_page_probability: item.json.first_page_probability,\n  big_brands_count: item.json.big_brands_count,\n  serp_features: {\n    featured_snippet: item.json.has_featured_snippet,\n    knowledge_graph: item.json.has_knowledge_graph,\n    ads: item.json.has_ads\n  },\n  top_domains: item.json.top_domains\n}));\n\nconst result = {\n  seed_keyword: seedKeyword,\n  generated_at: new Date().toISOString(),\n  total_keywords: topKeywords.length,\n  max_requested: maxKeywords,\n  top_keywords: topKeywords\n};\n\nreturn [{ json: result }];"
+      },
+      "name": "Format Output",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [3250, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [3450, 400]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Set Variables", "type": "main", "index": 0 }]]
+    },
+    "Set Variables": {
+      "main": [
+        [
+          { "node": "Groq - Generate Keywords", "type": "main", "index": 0 },
+          { "node": "SERP - Get Related Searches", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Groq - Generate Keywords": {
+      "main": [[{ "node": "Parse LLM Keywords", "type": "main", "index": 0 }]]
+    },
+    "Parse LLM Keywords": {
+      "main": [[{ "node": "Merge Keywords", "type": "main", "index": 0 }]]
+    },
+    "SERP - Get Related Searches": {
+      "main": [[{ "node": "Parse SERP Keywords", "type": "main", "index": 0 }]]
+    },
+    "Parse SERP Keywords": {
+      "main": [[{ "node": "Merge Keywords", "type": "main", "index": 1 }]]
+    },
+    "Merge Keywords": {
+      "main": [[{ "node": "Deduplicate", "type": "main", "index": 0 }]]
+    },
+    "Deduplicate": {
+      "main": [[{ "node": "Split In Batches", "type": "main", "index": 0 }]]
+    },
+    "Split In Batches": {
+      "main": [[{ "node": "SERP - Analyze Keyword", "type": "main", "index": 0 }]]
+    },
+    "SERP - Analyze Keyword": {
+      "main": [[{ "node": "Calculate Competition", "type": "main", "index": 0 }]]
+    },
+    "Calculate Competition": {
+      "main": [[{ "node": "Estimate Volume", "type": "main", "index": 0 }]]
+    },
+    "Estimate Volume": {
+      "main": [[{ "node": "Calculate Opportunity Score", "type": "main", "index": 0 }]]
+    },
+    "Calculate Opportunity Score": {
+      "main": [[{ "node": "Loop Back", "type": "main", "index": 0 }]]
+    },
+    "Loop Back": {
+      "main": [[{ "node": "Sort by Opportunity", "type": "main", "index": 0 }]]
+    },
+    "Sort by Opportunity": {
+      "main": [[{ "node": "Limit to Top 50", "type": "main", "index": 0 }]]
+    },
+    "Limit to Top 50": {
+      "main": [[{ "node": "Format Output", "type": "main", "index": 0 }]]
+    },
+    "Format Output": {
+      "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {},
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-01-01T00:00:00.000Z",
+  "versionId": "1"
+}
