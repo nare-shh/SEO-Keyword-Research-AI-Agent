@@ -1,0 +1,45 @@
+# Core Dependencies
+python-dotenv==1.0.0
+requests==2.31.0
+pydantic==2.5.3
+
+# LLM Client
+groq==0.4.2
+
+# SERP API
+google-search-results==2.4.2
+
+# Google Trends (Optional)
+pytrends==4.9.2
+
+# Data Processing
+pandas==2.1.4
+numpy==1.26.3
+
+# Utilities
+tqdm==4.66.1
+colorama==0.4.6
+
+# Testing
+pytest==7.4.4
+pytest-cov==4.1.0
+pytest-mock==3.12.0
+
+# Code Quality
+black==24.1.1
+flake8==7.0.0
+mypy==1.8.0
+
+# Logging
+loguru==0.7.2
+
+# CLI
+click==8.1.7
+rich==13.7.0
+
+# JSON Schema Validation
+jsonschema==4.20.0
+
+# HTTP Server (if running as API)
+fastapi==0.109.0
+uvicorn==0.27.0
