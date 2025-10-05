@@ -23,7 +23,7 @@ class GroqClient:
             raise ValueError("Groq API key not found. Set GROQ_API_KEY environment variable.")
         
         self.client = Groq(api_key=self.api_key)
-        self.model = "llama-3.1-70b-versatile"
+        self.model = "llama-3.3-70b-versatile"
         self.max_retries = 3
         self.retry_delay = 1
     
