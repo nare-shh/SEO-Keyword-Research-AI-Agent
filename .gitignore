@@ -1,0 +1,113 @@
+# Environment Variables
+.env
+*.env
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Output Files
+output/
+results/
+*.csv
+*.xlsx
+
+# Large Files
+*.mp4
+*.mov
+*.avi
+*.mkv
+
+# Temporary Files
+*.tmp
+*.temp
+*.cache
+tmp/
+temp/
+
+# Documentation Build
+docs/_build/
+site/
+
+# N8N
+.n8n/
+n8n-data/
+
+# Docker
+*.pid
+*.seed
+*.pid.lock
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+*.ipynb
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Secrets
+secrets/
+credentials/
+*.key
+*.pem
+*.crt
